@@ -4,7 +4,7 @@ from scipy.optimize import linear_sum_assignment
 
 
 def assign_targets(initial_positions: np.ndarray, targets: np.ndarray) -> np.ndarray:
-    dists = np.linalg.norm(initial_positions[:, None] - targets[None], axis=-1)**2
+    dists = np.linalg.norm(initial_positions[:, None] - targets[None], axis=-1) ** 2
     row_ind, col_ind = linear_sum_assignment(dists)
     return targets[col_ind]
 
@@ -13,11 +13,11 @@ def repulsion_force(positions: np.ndarray, k_rep: float, r_safe: float) -> np.nd
     N = positions.shape[0]
     forces = np.zeros_like(positions)
     for i in range(N):
-        for j in range(i+1, N):
+        for j in range(i + 1, N):
             diff = positions[i] - positions[j]
             dist = np.linalg.norm(diff)
-            if dist < r_safe and dist > 1e-6:
-                force = k_rep * diff / dist**3
+            if 1e-6 < dist < r_safe:
+                force = k_rep * diff / dist ** 3
                 forces[i] += force
                 forces[j] -= force
     return forces
@@ -44,8 +44,9 @@ def compute_trajectories(initial_positions: np.ndarray, targets: np.ndarray, T_f
     N = len(initial_positions)
     assigned_targets = assign_targets(initial_positions, targets)
     params = {'m': 1.0, 'k_p': 2.0, 'k_d': 1.5, 'v_max': 5.0, 'k_rep': 20.0, 'r_safe': 0.5}
-    y0 = np.concatenate([initial_positions.ravel(), np.zeros(3*N)])
+    y0 = np.concatenate([initial_positions.ravel(), np.zeros(3 * N)])
     times = np.arange(0, T_final + dt, dt)
     sol = solve_ivp(lambda t, y: rhs(t, y, assigned_targets, params), [0, T_final], y0, t_eval=times, method='RK45')
-    if not sol.success: raise ValueError("IVP solver failed")
+    if not sol.success:
+        raise ValueError("IVP solver failed")
     return sol.y[:3*N].reshape(len(times), N, 3)
