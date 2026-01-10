@@ -30,8 +30,7 @@ The project focuses on numerical simulation and trajectory generation, not real 
 ```
 ├── data/
 │   ├── images/  # Handwritten images or masks
-│   ├── videos/  # Input videos for motion tracking
-│   └── text/  # Text definitions
+│   └── videos/  # Input videos for motion tracking
 ├── src/
 │   ├── swarm/  # Drone and swarm logic
 │   ├── dynamics/  # Motion and control models
