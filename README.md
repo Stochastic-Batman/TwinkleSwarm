@@ -80,13 +80,18 @@ The simulation produces:
 
 Output files are stored in the `outputs/` directory.
 
-## Running The Project
+## Setting Up & Running The Project
 
 Check your Python version with `python --version`. If it is not already Python 3.14, set it to 3.14. Then create a virtual environment with:
 
 ```bash
 python -m venv twinkleswarm_venv
 ```
+
+Activate the virtual environment:
+* For Linux and macOS: `source twinkleswarm_venv/bin/activate`
+* For Windows (from CMD): `twinkleswarm_venv\Scripts\activate.bat`
+
 
 Install dependencies:
 
