@@ -32,11 +32,9 @@ The project focuses on numerical simulation and trajectory generation, not real 
 │   ├── images/  # Handwritten images or masks
 │   └── videos/  # Input videos for motion tracking
 ├── src/
-│   ├── swarm/  # Drone and swarm logic
-│   ├── dynamics/  # Motion and control models
-│   ├── tracking/  # Video motion extraction
-│   ├── visualization/  # 3D animation
-│   └── utils/  # Utility functions
+│   ├── drone_dynamics.py  # Motion and control models
+│   ├── visualize.py  # 3D animation
+│   └── utils.py  # Utility functions
 ├── outputs/
 │   ├── trajectories/  # Saved drone trajectories
 │   └── videos/  # Exported MP4 files
