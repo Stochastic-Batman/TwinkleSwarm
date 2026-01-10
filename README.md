@@ -82,13 +82,17 @@ Output files are stored in the `outputs/` directory.
 
 ## Running The Project
 
+Check your Python version with `python --version`. If it is not already Python 3.14, set it to 3.14. Then create a virtual environment with:
+
+```bash
+python -m venv twinkleswarm_venv
+```
+
 Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
-
----
 
 and run the main entry point:
 
