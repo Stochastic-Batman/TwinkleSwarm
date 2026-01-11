@@ -1,0 +1,618 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{graphicx}
+
+\geometry{margin=1in}
+
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+
+\title{\texttt{TwinkleSwarm}\\
+	\large Illuminated Drone Swarm Coordination}
+\author{Stochastic Batman}
+\date{January 11, 2026}
+
+\begin{document}
+	
+	\maketitle
+	
+	\begin{abstract}
+		This document provides a mathematical foundation for \texttt{TwinkleSwarm}, a simulation framework for coordinating illuminated drone swarms. We present the differential equations governing drone motion, analyze their behavior, and describe the algorithms for extracting target formations from images and motion patterns from videos. The framework combines control theory, particle dynamics, and computer vision to achieve collision-free formation control. \texttt{Claude Opus 4.5} was used to correct grammar, format math quickly, and check for errors.
+	\end{abstract}
+	
+	\section{Introduction}
+	
+	\texttt{TwinkleSwarm} simulates coordinated drone swarms that form visual patterns extracted from images or follow motion extracted from videos. Each drone is modeled as a particle with position and velocity, subject to control forces that drive it toward target positions while avoiding collisions with neighboring drones.
+	
+	The system addresses three sequential challenges:
+	\begin{enumerate}
+		\item \textbf{Static Formation}: Moving drones from arbitrary initial positions to form a handwritten pattern
+		\item \textbf{Shape Transition}: Smoothly transitioning the swarm from one formation to another
+		\item \textbf{Dynamic Tracking}: Following moving objects in video while preserving the swarm's shape
+	\end{enumerate}
+	
+	\section{Mathematical Model}
+	
+	\subsection{State Representation}
+	
+	Each drone $i$ (where $i = 1, 2, \ldots, N$) is characterized by:
+	\begin{itemize}
+		\item $\mathbf{x}_i(t) \in \mathbb{R}^3$: Position at time $t$
+		\item $\mathbf{v}_i(t) \in \mathbb{R}^3$: Velocity at time $t$
+	\end{itemize}
+	
+	The complete swarm state at time $t$ is the collection of all drone states: $(\mathbf{x}_1, \mathbf{v}_1, \mathbf{x}_2, \mathbf{v}_2, \ldots, \mathbf{x}_N, \mathbf{v}_N)$.
+	
+	\subsection{Governing Equations}
+	
+	The motion of each drone follows a second-order system with velocity saturation and inter-drone repulsion. We present two formulations: the Initial Value Problem (IVP) for time-forward simulation and the Boundary Value Problem (BVP) for trajectory optimization.
+	
+	\subsubsection{Initial Value Problem (IVP) Formulation}
+	
+	The IVP formulation describes how drones evolve from known initial conditions:
+	
+	\begin{equation}
+		\dot{\mathbf{x}}_i(t) = \mathbf{v}_i(t) \cdot \min\left(1, \frac{v_{\max}}{\|\mathbf{v}_i(t)\|}\right)
+		\label{eq:position_update}
+	\end{equation}
+	
+	\begin{equation}
+		\dot{\mathbf{v}}_i(t) = \frac{1}{m}\left[k_p(\mathbf{T}_i(t) - \mathbf{x}_i(t)) + \sum_{j \neq i} \mathbf{f}_{\text{rep}}(\mathbf{x}_i(t), \mathbf{x}_j(t)) - k_d \mathbf{v}_i(t)\right]
+		\label{eq:velocity_update_ivp}
+	\end{equation}
+	
+	with initial conditions:
+	\begin{equation}
+		\mathbf{x}_i(0) = \mathbf{x}_{i,0}, \quad \mathbf{v}_i(0) = \mathbf{v}_{i,0}
+	\end{equation}
+	
+	\textbf{Intuition}: Equation \eqref{eq:position_update} updates position based on velocity, but caps the speed at $v_{\max}$ (a physical constraint). Equation \eqref{eq:velocity_update_ivp} describes how velocity changes over time, driven by three forces:
+	\begin{itemize}
+		\item \textbf{Attraction to target}: $k_p(\mathbf{T}_i - \mathbf{x}_i)$ pulls the drone toward its assigned target $\mathbf{T}_i$
+		\item \textbf{Repulsion from neighbors}: $\sum_{j \neq i} \mathbf{f}_{\text{rep}}$ pushes drones apart to avoid collisions
+		\item \textbf{Damping}: $-k_d \mathbf{v}_i$ reduces velocity over time, preventing oscillation and ensuring smooth convergence
+	\end{itemize}
+	
+	\textbf{Parameters}:
+	\begin{itemize}
+		\item $m > 0$: Drone mass (constant)
+		\item $k_p > 0$: Proportional gain controlling attraction strength
+		\item $k_d > 0$: Damping coefficient controlling convergence speed
+		\item $v_{\max} > 0$: Maximum allowable velocity
+		\item $\mathbf{T}_i(t) \in \mathbb{R}^3$: Time-varying target position for drone $i$
+	\end{itemize}
+	
+	\subsubsection{Repulsive Force Model}
+	
+	To prevent collisions, drones repel each other when too close. The repulsive force between drones $i$ and $j$ is:
+	
+	\begin{equation}
+		\mathbf{f}_{\text{rep}}(\mathbf{x}_i, \mathbf{x}_j) = \begin{cases}
+			k_{\text{rep}} \cdot \frac{\mathbf{x}_i - \mathbf{x}_j}{\|\mathbf{x}_i - \mathbf{x}_j\|^3} & \text{if } \|\mathbf{x}_i - \mathbf{x}_j\| < R_{\text{safe}} \\
+			\mathbf{0} & \text{otherwise}
+		\end{cases}
+		\label{eq:repulsion}
+	\end{equation}
+	
+	where $k_{\text{rep}} > 0$ is the repulsion gain and $R_{\text{safe}} > 0$ is the safety radius.
+	
+	\textbf{Intuition}: The force follows an inverse-cube law, meaning it grows rapidly as drones get closer. The direction $\frac{\mathbf{x}_i - \mathbf{x}_j}{\|\mathbf{x}_i - \mathbf{x}_j\|}$ is the unit vector pointing from drone $j$ to drone $i$, so the force pushes drone $i$ away from drone $j$. The cubic dependence ensures strong short-range repulsion while allowing free movement when drones are far apart.
+	
+	\subsection{Velocity Fields and Saturation}
+	
+	\subsubsection{What is a Velocity Field?}
+	
+	A velocity field is a function $\mathbf{V}: \mathbb{R}^3 \times \mathbb{R} \to \mathbb{R}^3$ that assigns a velocity vector to each point in space and time:
+	
+	\begin{equation}
+		\mathbf{V}(\mathbf{x}, t) = \begin{bmatrix} V_x(\mathbf{x}, t) \\ V_y(\mathbf{x}, t) \\ V_z(\mathbf{x}, t) \end{bmatrix}
+	\end{equation}
+	
+	\textbf{Intuition}: Think of a velocity field like a wind map. At every location $\mathbf{x}$ and time $t$, the field tells you "if you were at this position, here's how fast and in what direction you should be moving". For drone swarms following video motion, the velocity field describes how the target shape is moving through space.
+	
+	Unlike static targets $\mathbf{T}_i$ which tell drones "where to go", a velocity field tells them "how to move". For dynamic tracking: when following a moving object, we don't just want to know where the object is now, but how it's moving so we can move with it.
+	
+	\subsubsection{The Saturation Problem}
+	
+	In practice, velocity fields extracted from videos can contain arbitrarily large velocities (computer vision algorithms are not perfect, yet). A fast-moving object might have $\|\mathbf{V}(\mathbf{x}, t)\| \gg v_{\max}$, where $v_{\max}$ is the physical velocity limit of our drones.
+	
+	\textbf{Why We Care About Saturation}:
+	\begin{itemize}
+		\item \textbf{Physical constraints}: Real drones have maximum speeds determined by motor capabilities, battery power, and aerodynamics.
+		\item \textbf{Safety}: Exceeding velocity limits can lead to loss of control or collisions.
+		\item \textbf{Simulation validity}: If we allow unbounded velocities in simulation, our results won't transfer to real hardware.
+		\item \textbf{Numerical stability}: Very large velocities can cause integration schemes to become unstable or require impractically small time steps.
+	\end{itemize}
+	
+	\textbf{The Naive Approach Fails}: Simply using $\dot{\mathbf{v}}_i = \mathbf{V}(\mathbf{x}_i, t) - \mathbf{v}_i$ doesn't respect velocity limits. Even if we clip drone velocities after integration, the control law itself doesn't "know" about the constraint, leading to poor tracking and potential instability.
+	
+	\subsubsection{Saturated Velocity Field}
+	
+	To address this, we define the saturated velocity field:
+	
+	\begin{equation}
+		\mathbf{V}_{\text{sat}}(\mathbf{x}, t) = \begin{cases}
+			\mathbf{V}(\mathbf{x}, t) \cdot \min\left(1, \frac{v_{\max}}{\|\mathbf{V}(\mathbf{x}, t)\|}\right) & \text{if } \|\mathbf{V}(\mathbf{x}, t)\| > 0 \\
+			\mathbf{0} & \text{otherwise}
+		\end{cases}
+		\label{eq:velocity_saturation}
+	\end{equation}
+	
+	\textbf{How It Works}: 
+	\begin{itemize}
+		\item If $\|\mathbf{V}(\mathbf{x}, t)\| \leq v_{\max}$, then $\min(1, \frac{v_{\max}}{\|\mathbf{V}\|}) = 1$ and $\mathbf{V}_{\text{sat}} = \mathbf{V}$ (no change)
+		\item If $\|\mathbf{V}(\mathbf{x}, t)\| > v_{\max}$, then $\min(1, \frac{v_{\max}}{\|\mathbf{V}\|}) = \frac{v_{\max}}{\|\mathbf{V}\|} < 1$, which scales the vector down
+	\end{itemize}
+	
+	The result is that $\mathbf{V}_{\text{sat}}$ always satisfies $\|\mathbf{V}_{\text{sat}}(\mathbf{x}, t)\| \leq v_{\max}$.
+	
+	\textbf{Geometric Interpretation}: Saturation preserves direction but limits magnitude. If you visualize the velocity field as a collection of arrows, saturation "clips" the long arrows to maximum length while leaving short arrows unchanged. The field retains its qualitative structure (which direction motion is flowing) while respecting physical constraints.
+	
+	\textbf{Example}: Suppose $v_{\max} = 5$ m/s and at some point $\mathbf{V} = (12, 9, 0)^T$ m/s. Then $\|\mathbf{V}\| = 15$ m/s. The saturated version is:
+	\begin{equation*}
+		\mathbf{V}_{\text{sat}} = (12, 9, 0)^T \cdot \frac{5}{15} = (4, 3, 0)^T \text{ m/s}
+	\end{equation*}
+	The direction (north-east) is preserved, but the speed is reduced from 15 to 5 m/s.
+	
+	\subsection{Velocity Field Tracking (for Dynamic Scenarios)}
+	
+	When tracking motion from video, we use a velocity field formulation instead of fixed targets:
+	
+	\begin{equation}
+		\dot{\mathbf{x}}_i(t) = \mathbf{v}_i(t) \cdot \min\left(1, \frac{v_{\max}}{\|\mathbf{v}_i(t)\|}\right)
+	\end{equation}
+	
+	\begin{equation}
+		\dot{\mathbf{v}}_i(t) = \frac{1}{m}\left[k_v(\mathbf{V}_{\text{sat}}(\mathbf{x}_i(t), t) - \mathbf{v}_i(t)) + \sum_{j \neq i} \mathbf{f}_{\text{rep}}(\mathbf{x}_i(t), \mathbf{x}_j(t)) - k_d \mathbf{v}_i(t)\right]
+		\label{eq:velocity_field_tracking}
+	\end{equation}
+	
+	where $\mathbf{V}(\mathbf{x}, t)$ is a velocity field extracted from video (see Section \ref{sec:video_processing}), and $\mathbf{V}_{\text{sat}}$ is its saturated version.
+	
+	\textbf{Intuition}: Instead of moving toward fixed target positions, drones now try to match their velocities to a field $\mathbf{V}(\mathbf{x}, t)$ that describes how the target shape is moving. The term $k_v(\mathbf{V}_{\text{sat}} - \mathbf{v}_i)$ drives each drone's velocity toward the field velocity at its current position. This allows the swarm to track dynamic motion while maintaining its formation.
+	
+	\subsection{Analytical Solutions}
+	
+	\subsubsection{Single Drone, No Repulsion}
+	
+	Consider a single drone ($N=1$) with no repulsive forces, moving toward a fixed target $\mathbf{T}$ (independent of time):
+	
+	\begin{align}
+		\dot{\mathbf{x}}(t) &= \mathbf{v}(t) \\
+		\dot{\mathbf{v}}(t) &= \frac{1}{m}[k_p(\mathbf{T} - \mathbf{x}(t)) - k_d \mathbf{v}(t)]
+	\end{align}
+	
+	This is a linear system. Define the error $\mathbf{e}(t) = \mathbf{x}(t) - \mathbf{T}$. Then:
+	
+	\begin{align}
+		\dot{\mathbf{e}}(t) &= \mathbf{v}(t) \\
+		\dot{\mathbf{v}}(t) &= -\frac{k_p}{m}\mathbf{e}(t) - \frac{k_d}{m}\mathbf{v}(t)
+	\end{align}
+	
+	To demonstrate that this system represents a damped harmonic oscillator, we can reduce the coupled first-order equations into a single second-order differential equation.
+	
+	Differentiating the first equation with respect to time gives the acceleration:
+	\begin{equation}
+		\ddot{\mathbf{e}}(t) = \dot{\mathbf{v}}(t)
+	\end{equation}
+	
+	Substituting the expression for from the second equation yields:
+	\begin{equation}
+		\ddot{\mathbf{e}}(t) = -\frac{k_p}{m}\mathbf{e}(t) - \frac{k_d}{m}\mathbf{v}(t) = -\frac{k_p}{m}\mathbf{e}(t) - \frac{k_d}{m}\dot{\mathbf{e}}(t)
+	\end{equation}
+	
+	Rearranging results in the standard second-order linear homogeneous ODE:
+	\begin{equation}
+		\ddot{\mathbf{e}}(t) + \frac{k_d}{m}\dot{\mathbf{e}}(t) + \frac{k_p}{m}\mathbf{e}(t) = \mathbf{0}
+	\end{equation}
+	
+	This is a damped harmonic oscillator. Assume a solution of the form $e(t) = e^{\lambda t}$, then as $e^{\lambda t} \neq 0$, divide by $e^{\lambda t}$. Then, the characteristic equation is: \begin{equation} \lambda^2 + \frac{k_d}{m}\lambda + \frac{k_p}{m} = 0 \end{equation}
+	with roots:
+	\begin{equation}
+		\lambda_{1,2} = \frac{-k_d \pm \sqrt{k_d^2 - 4mk_p}}{2m}
+	\end{equation}
+	
+	\begin{enumerate}
+		\item[Case 1:] \textbf{Overdamped} ($k_d^2 > 4mk_p$). Both roots are real and negative, leading to exponential decay without oscillation.
+		\item[Case 2:] \textbf{Critically Damped} ($k_d^2 = 4mk_p$). A repeated negative root, yielding the fastest convergence without overshoot.
+		\item[Case 3:] \textbf{Underdamped} ($k_d^2 < 4mk_p$). Complex conjugate roots with negative real part, resulting in damped oscillations around the target.
+		\item[Stability:] Because $k_d$ and $m$ are positive, the real part of $\lambda$ is always negative, which ensures that $\mathbf{e}(t) \to \mathbf{0}$ as $t \to \infty$ and the drones actually reach their targets.
+	\end{enumerate}
+	
+	The general solution for the underdamped case is:
+	
+	\begin{equation}
+		\mathbf{e}(t) = e^{-\alpha t}(\mathbf{A}\cos(\omega t) + \mathbf{B}\sin(\omega t))
+	\end{equation}
+	
+	where $\alpha = \frac{k_d}{2m}$ (decay rate) and $\omega = \frac{\sqrt{4mk_p - k_d^2}}{2m}$ (oscillation frequency). The coefficients $\mathbf{A}$ and $\mathbf{B}$ depend on initial conditions.
+	
+	\subsubsection{Energy Analysis}
+	
+	Define the total energy of the system as:
+	
+	\begin{equation}
+		E(t) = \sum_{i=1}^{N} \left[\frac{1}{2}m\|\mathbf{v}_i(t)\|^2 + \frac{1}{2}k_p\|\mathbf{x}_i(t) - \mathbf{T}_i(t)\|^2\right]
+	\end{equation}
+	
+	The first term is kinetic energy, the second is potential energy from the attraction to targets. Taking the time derivative (ignoring repulsion and time-varying targets for simplicity):
+	
+	\begin{equation}
+		\frac{dE}{dt} = \sum_{i=1}^{N} \left[m\mathbf{v}_i \cdot \dot{\mathbf{v}}_i + k_p(\mathbf{x}_i - \mathbf{T}_i) \cdot \dot{\mathbf{x}}_i\right]
+	\end{equation}
+	
+	Substituting the dynamics:
+	
+	\begin{align}
+		\frac{dE}{dt} &= \sum_{i=1}^{N} \left[\mathbf{v}_i \cdot (k_p(\mathbf{T}_i - \mathbf{x}_i) - k_d\mathbf{v}_i) + k_p(\mathbf{x}_i - \mathbf{T}_i) \cdot \mathbf{v}_i\right] \\
+		&= \sum_{i=1}^{N} \left[-k_d\|\mathbf{v}_i\|^2\right] \\
+		&= -k_d \sum_{i=1}^{N} \|\mathbf{v}_i\|^2 \leq 0
+	\end{align}
+	
+	\textbf{Interpretation}: Energy decreases over time due to damping, ensuring the system converges to a steady state where all drones are stationary at their targets.
+	
+	\section{Video Processing and Motion Extraction}
+	\label{sec:video_processing}
+	
+	This section describes how we extract motion information from video to drive the drone swarm. The key idea is to compute a \textit{velocity field} that describes how pixels move between consecutive frames, then use this field to guide drone motion.
+	
+	\subsection{The Motion Extraction Problem}
+	
+	Given a video sequence $\{I_1, I_2, \ldots, I_T\}$ where each $I_t: \Omega \to [0, 1]$ is a grayscale image defined on domain $\Omega \subset \mathbb{R}^2$, we want to find a velocity field $\mathbf{V}: \Omega \times \mathbb{R} \to \mathbb{R}^2$ that describes how the image content moves over time.
+	
+	\textbf{Intuition}: Imagine watching a ball roll across the screen. At each moment, different pixels correspond to the ball's surface. As the ball moves, these pixels appear to "flow" across the image. The velocity field captures this flow: at each pixel location and time, it tells us which direction and how fast the visual content is moving.
+	
+	\subsection{Optical Flow}
+	
+	Optical flow is the pattern of apparent motion of objects in a visual scene caused by relative motion between the observer and the scene. We compute optical flow between consecutive frames to extract this motion.
+	
+	\subsubsection{The Brightness Constancy Assumption}
+	
+	The fundamental assumption underlying most optical flow methods is \textbf{brightness constancy}: a point in the scene maintains constant brightness as it moves between frames. Mathematically, if a pixel at location $(x, y)$ in frame $t$ moves to location $(x + u, y + v)$ in frame $t+1$, then:
+	
+	\begin{equation}
+		I_t(x, y) = I_{t+1}(x + u, y + v)
+	\end{equation}
+	
+	where $(u, v)$ is the displacement vector (the flow).
+	
+	\textbf{Why This Makes Sense}: If you're tracking a red dot moving across a white background, the dot doesn't change color as it moves - only its position changes. The brightness constancy assumption formalizes this: the intensity value "travels" with the motion.
+	
+	\textbf{When It Fails}: This assumption breaks down when:
+	\begin{itemize}
+		\item Lighting changes (shadows appear/disappear)
+		\item Objects rotate (different surfaces become visible)
+		\item Occlusions occur (objects pass behind each other)
+		\item Motion blur is significant
+	\end{itemize}
+	
+	Despite these limitations, brightness constancy works well for small displacements and consistent lighting.
+	
+	\subsubsection{Deriving the Optical Flow Equation}
+	
+	To convert the brightness constancy assumption into a usable equation, we perform a first-order Taylor expansion of $I_{t+1}(x + u, y + v)$ around $(x, y)$:
+	
+	\begin{equation}
+		I_{t+1}(x + u, y + v) \approx I_{t+1}(x, y) + \frac{\partial I_{t+1}}{\partial x}u + \frac{\partial I_{t+1}}{\partial y}v
+	\end{equation}
+	
+	This is valid when displacements $(u, v)$ are small. Now, assuming the image changes smoothly over time, we can approximate:
+	
+	\begin{equation}
+		I_{t+1}(x, y) \approx I_t(x, y) + \frac{\partial I_t}{\partial t} \cdot \Delta t
+	\end{equation}
+	
+	where $\Delta t$ is the time between frames (typically $\Delta t = 1$ frame). For small time intervals, $\frac{\partial I_{t+1}}{\partial x} \approx \frac{\partial I_t}{\partial x}$ and similarly for $y$. Substituting the Taylor expansion into the brightness constancy equation:
+	
+	\begin{equation}
+		I_t(x, y) = I_t(x, y) + \frac{\partial I_t}{\partial t} + \frac{\partial I_t}{\partial x}u + \frac{\partial I_t}{\partial y}v
+	\end{equation}
+	
+	Canceling $I_t(x, y)$ from both sides:
+	
+	\begin{equation}
+		\frac{\partial I_t}{\partial x}u + \frac{\partial I_t}{\partial y}v + \frac{\partial I_t}{\partial t} = 0
+		\label{eq:optical_flow_constraint}
+	\end{equation}
+	
+	This is the \textbf{optical flow constraint equation}. In compact notation:
+	
+	\begin{equation}
+		\nabla I_t \cdot \mathbf{v}_f + I_t' = 0
+	\end{equation}
+	
+	where:
+	\begin{itemize}
+		\item $\nabla I_t = \left(\frac{\partial I_t}{\partial x}, \frac{\partial I_t}{\partial y}\right)^T$ is the spatial gradient (direction of brightness change)
+		\item $\mathbf{v}_f = (u, v)^T$ is the velocity (flow) vector
+		\item $I_t' = \frac{\partial I_t}{\partial t}$ is the temporal derivative (brightness change over time)
+	\end{itemize}
+	
+	\textbf{Geometric Interpretation}: Equation \eqref{eq:optical_flow_constraint} says that if brightness is constant along motion, then the rate of brightness change over time ($I_t'$) must be balanced by motion along the brightness gradient ($\nabla I_t \cdot \mathbf{v}_f$). If a pixel moves toward brighter regions at the right speed, the temporal darkening cancels the spatial brightening.
+	
+	\textbf{The Aperture Problem}: This is one equation with two unknowns ($u$ and $v$). Geometrically, we can only determine the component of flow perpendicular to image edges - motion parallel to edges is invisible. This is called the \textit{aperture problem}. To solve it, we need additional constraints.
+	
+	\subsection{Lucas-Kanade Method}
+	
+	The Lucas-Kanade method resolves the aperture problem by assuming the flow is \textbf{constant in a local neighborhood} $\mathcal{N}$ around each pixel. This is reasonable for small patches where all pixels belong to the same moving object.
+	
+	\subsubsection{Formulation}
+	
+	For a neighborhood $\mathcal{N}$ centered at pixel $(x_0, y_0)$, we assume $(u, v)$ is constant across all pixels $(x, y) \in \mathcal{N}$. The optical flow constraint should hold at every pixel, but due to noise and modeling errors, we solve it in a least-squares sense:
+	
+	\begin{equation}
+		\min_{u, v} \sum_{(x, y) \in \mathcal{N}} \left[\frac{\partial I_t}{\partial x}(x, y) \cdot u + \frac{\partial I_t}{\partial y}(x, y) \cdot v + \frac{\partial I_t}{\partial t}(x, y)\right]^2
+	\end{equation}
+	
+	\textbf{Intuition}: We're fitting a single velocity $(u, v)$ that best explains the brightness changes across all pixels in the patch. Some pixels might not fit perfectly (due to noise), but the least-squares solution minimizes overall error.
+	
+	\subsubsection{Matrix Form}
+	
+	Let $I_x = \frac{\partial I_t}{\partial x}$, $I_y = \frac{\partial I_t}{\partial y}$, and $I_t = \frac{\partial I_t}{\partial t}$. The least-squares problem can be written in matrix form. Define:
+	
+	\begin{equation}
+		A = \begin{bmatrix}
+			I_x(x_1, y_1) & I_y(x_1, y_1) \\
+			I_x(x_2, y_2) & I_y(x_2, y_2) \\
+			\vdots & \vdots \\
+			I_x(x_n, y_n) & I_y(x_n, y_n)
+		\end{bmatrix}, \quad
+		\mathbf{b} = -\begin{bmatrix}
+			I_t(x_1, y_1) \\
+			I_t(x_2, y_2) \\
+			\vdots \\
+			I_t(x_n, y_n)
+		\end{bmatrix}, \quad
+		\mathbf{v} = \begin{bmatrix} u \\ v \end{bmatrix}
+	\end{equation}
+	
+	where $(x_i, y_i)$ are the $n$ pixels in $\mathcal{N}$. The least-squares solution minimizes $\|A\mathbf{v} - \mathbf{b}\|^2$, which is:
+	
+	\begin{equation}
+		\mathbf{v} = (A^T A)^{-1} A^T \mathbf{b}
+	\end{equation}
+	
+	Computing $A^T A$ and $A^T \mathbf{b}$:
+	
+	\begin{equation}
+		A^T A = \begin{bmatrix}
+			\sum I_x^2 & \sum I_x I_y \\
+			\sum I_x I_y & \sum I_y^2
+		\end{bmatrix}, \quad
+		A^T \mathbf{b} = -\begin{bmatrix}
+			\sum I_x I_t \\
+			\sum I_y I_t
+		\end{bmatrix}
+	\end{equation}
+	
+	where all sums are over $(x, y) \in \mathcal{N}$. Therefore:
+	
+	\begin{equation}
+		\begin{bmatrix} u \\ v \end{bmatrix} = -\begin{bmatrix}
+			\sum I_x^2 & \sum I_x I_y \\
+			\sum I_x I_y & \sum I_y^2
+		\end{bmatrix}^{-1} \begin{bmatrix}
+			\sum I_x I_t \\
+			\sum I_y I_t
+		\end{bmatrix}
+		\label{eq:lucas_kanade_solution}
+	\end{equation}
+	
+	\subsubsection{Interpreting the Structure Tensor}
+	
+	The matrix $A^T A$ is called the \textbf{structure tensor} or \textbf{second moment matrix}. Its properties determine whether the flow can be reliably computed:
+	
+	\begin{itemize}
+		\item \textbf{Large eigenvalues in both directions}: The patch contains texture in multiple orientations (e.g., a corner). Flow is well-determined.
+		\item \textbf{One large eigenvalue}: The patch contains an edge. Flow perpendicular to the edge is determined, but parallel flow is ambiguous (aperture problem).
+		\item \textbf{Small eigenvalues}: The patch is uniform (constant intensity). No reliable flow can be computed.
+	\end{itemize}
+	
+	In practice, we only compute flow at pixels where $A^T A$ is well-conditioned, typically by checking that its smallest eigenvalue exceeds a threshold.
+	
+	\subsection{Computing Spatial and Temporal Derivatives}
+	
+	To apply the Lucas-Kanade method, we need to compute $I_x$, $I_y$, and $I_t$ numerically from discrete images.
+	
+	\subsubsection{Spatial Gradients}
+	
+	The spatial derivatives are approximated using finite differences. Common choices include:
+	
+	\textbf{Central difference} (second-order accurate):
+	\begin{equation}
+		I_x(x, y) \approx \frac{I_t(x+1, y) - I_t(x-1, y)}{2}
+	\end{equation}
+	
+	\textbf{Sobel operator} (more robust to noise):
+	\begin{equation}
+		I_x = \begin{bmatrix}
+			-1 & 0 & 1 \\
+			-2 & 0 & 2 \\
+			-1 & 0 & 1
+		\end{bmatrix} * I_t
+	\end{equation}
+	
+	where $*$ denotes convolution. The Sobel operator applies smoothing (averaging in the $y$-direction) while differentiating in $x$, reducing sensitivity to noise.
+	
+	\subsubsection{Temporal Derivative}
+	
+	The temporal derivative is computed as:
+	\begin{equation}
+		I_t(x, y) \approx I_{t+1}(x, y) - I_t(x, y)
+	\end{equation}
+	
+	For better accuracy, some implementations average over neighboring pixels:
+	\begin{equation}
+		I_t(x, y) \approx \frac{1}{9} \sum_{\Delta x \in \{-1, 0, 1\}} \sum_{\Delta y \in \{-1, 0, 1\}} \left[ I_{t+1}(x + \Delta x, y + \Delta y) - I_t(x + \Delta x, y + \Delta y) \right]
+	\end{equation}
+	
+	\subsection{Velocity Field Construction for Drone Control}
+	
+	The optical flow computation gives us a 2D velocity field $\mathbf{V}_{\text{raw}}(x, y, t) = (u(x, y, t), v(x, y, t))^T$ in pixel coordinates. To use this for controlling drones in physical 3D space, we perform several transformations:
+	
+	\subsubsection*{Step 1: Filtering and Smoothing}
+	
+	Raw optical flow often contains noise and outliers. We apply spatial smoothing (e.g., Gaussian blur) to obtain a smoother field:
+	\begin{equation}
+		\mathbf{V}_{\text{smooth}} = G_\sigma * \mathbf{V}_{\text{raw}}
+	\end{equation}
+	
+	where $G_\sigma$ is a Gaussian kernel with standard deviation $\sigma$.
+	
+	\subsubsection*{Step 2: Coordinate Transformation}
+	
+	Image coordinates have origin at the top-left corner with $y$ increasing downward, while our drone coordinate system has origin at the center with $y$ increasing upward. We transform:
+	\begin{equation}
+		\begin{bmatrix} x_{\text{drone}} \\ y_{\text{drone}} \end{bmatrix} = \begin{bmatrix}
+			x_{\text{pixel}} - \frac{w}{2} \\
+			\frac{h}{2} - y_{\text{pixel}}
+		\end{bmatrix}
+	\end{equation}
+	
+	where $w \times h$ is the image resolution. The velocity field transforms accordingly:
+	\begin{equation}
+		\mathbf{V}_{\text{drone}}(x, y, t) = \begin{bmatrix} u(x, y, t) \\ -v(x, y, t) \end{bmatrix}
+	\end{equation}
+	
+	\subsubsection*{Step 3: Physical Scaling}
+	
+	Pixel velocities (pixels/frame) must be converted to physical velocities (meters/second). Let $s$ be the scale factor and $f$ the frame rate:
+	\begin{equation}
+		\mathbf{V}_{\text{physical}} = s \cdot f \cdot \mathbf{V}_{\text{drone}}
+	\end{equation}
+	
+	For example, if $s = 0.01$ m/pixel and $f = 30$ fps, a flow of $(10, 5)$ pixels/frame becomes $(3.0, 1.5)$ m/s.
+	
+	\subsubsection*{Step 4: 3D Extension}
+	
+	Since videos provide only 2D motion, we extend to 3D by setting the $z$-component to zero:
+	\begin{equation}
+		\mathbf{V}(x, y, z, t) = \begin{bmatrix} V_x(x, y, t) \\ V_y(x, y, t) \\ 0 \end{bmatrix}
+	\end{equation}
+	
+	This keeps the swarm motion in the plane parallel to the image.
+	
+	\subsubsection*{Step 5: Spatial Interpolation}
+	
+	Drones can be at arbitrary positions, not just pixel centers. We use bilinear interpolation to evaluate the velocity field at any point $(x, y)$:
+	
+	Let $(x, y)$ fall in the grid cell with corners at $(x_0, y_0)$, $(x_1, y_0)$, $(x_0, y_1)$, $(x_1, y_1)$. Define normalized coordinates:
+	\begin{equation}
+		\alpha = \frac{x - x_0}{x_1 - x_0}, \quad \beta = \frac{y - y_0}{y_1 - y_0}
+	\end{equation}
+	
+	Then:
+	\begin{align}
+		\mathbf{V}(x, y, t) = &(1-\alpha)(1-\beta)\mathbf{V}(x_0, y_0, t) + \alpha(1-\beta)\mathbf{V}(x_1, y_0, t) \nonumber \\
+		&+ (1-\alpha)\beta\mathbf{V}(x_0, y_1, t) + \alpha\beta\mathbf{V}(x_1, y_1, t)
+	\end{align}
+	
+	\subsubsection*{Step 6: Saturation}
+	
+	Finally, we apply velocity saturation (as described in Section 2.3.3) to ensure $\|\mathbf{V}\| \leq v_{\max}$:
+	\begin{equation}
+		\mathbf{V}_{\text{sat}}(\mathbf{x}, t) = \begin{cases}
+			\mathbf{V}(\mathbf{x}, t) \cdot \min\left(1, \frac{v_{\max}}{\|\mathbf{V}(\mathbf{x}, t)\|}\right) & \text{if } \|\mathbf{V}(\mathbf{x}, t)\| > 0 \\
+			\mathbf{0} & \text{otherwise}
+		\end{cases}
+	\end{equation}
+	
+	\subsection{Practical Considerations}
+	
+	\subsubsection{Multi-Scale Optical Flow}
+	
+	For large displacements (when objects move many pixels between frames), the Taylor expansion underlying equation \eqref{eq:optical_flow_constraint} breaks down. The solution is to compute flow at multiple scales:
+	
+	\begin{enumerate}
+		\item Create an image pyramid: $\{I^{(0)}, I^{(1)}, \ldots, I^{(L)}\}$ where $I^{(l+1)}$ is a downsampled version of $I^{(l)}$
+		\item Compute flow at level $L$ (where motion is small)
+		\item Upsample the flow and use it to warp $I^{(l-1)}$
+		\item Compute residual flow at level $l-1$
+		\item Repeat until reaching the original resolution
+	\end{enumerate}
+	
+	This is called the \textbf{coarse-to-fine} or \textbf{pyramidal} approach.
+	
+	\subsubsection{Dense vs. Sparse Flow}
+	
+	\begin{itemize}
+		\item \textbf{Dense flow}: Computed at every pixel. Good for tracking entire shapes but computationally expensive.
+		\item \textbf{Sparse flow}: Computed only at feature points (corners, edges). Faster but may miss motion in textureless regions.
+	\end{itemize}
+	
+	For drone swarms, dense flow is preferable because we want to track the entire visible shape, not just isolated points.
+	
+	\subsubsection{Alternative Methods}
+	
+	While we focus on Lucas-Kanade, other optical flow methods include:
+	\begin{itemize}
+		\item \textbf{Horn-Schunck}: Adds a global smoothness constraint, encouraging similar flow in neighboring pixels
+		\item \textbf{Farneback}: Uses polynomial expansion instead of brightness constancy
+		\item \textbf{Deep learning methods} (FlowNet, PWC-Net): Neural networks trained on large datasets
+	\end{itemize}
+	
+	OpenCV provides implementations of these methods through \texttt{cv2.calcOpticalFlowFarneback()} and related functions.
+	
+	\section{Numerical Integration}
+	
+	Numerical integration techniques used for this project are probably the most famous and classical methods:
+	
+	\subsection{Forward Euler Method}
+	
+	\begin{equation}
+		\mathbf{y}(t + \Delta t) = \mathbf{y}(t) + \Delta t \cdot \mathbf{f}(\mathbf{y}(t), t)
+	\end{equation}
+	
+	This is first-order accurate ($O(\Delta t)$) and simple but can be unstable for stiff systems.
+	
+	\subsection{Runge-Kutta Methods}
+	
+	The fourth-order Runge-Kutta (RK4) method provides better accuracy:
+	
+	\begin{align}
+		\mathbf{k}_1 &= \mathbf{f}(\mathbf{y}_n, t_n) \\
+		\mathbf{k}_2 &= \mathbf{f}(\mathbf{y}_n + \frac{\Delta t}{2}\mathbf{k}_1, t_n + \frac{\Delta t}{2}) \\
+		\mathbf{k}_3 &= \mathbf{f}(\mathbf{y}_n + \frac{\Delta t}{2}\mathbf{k}_2, t_n + \frac{\Delta t}{2}) \\
+		\mathbf{k}_4 &= \mathbf{f}(\mathbf{y}_n + \Delta t \mathbf{k}_3, t_n + \Delta t) \\
+		\mathbf{y}_{n+1} &= \mathbf{y}_n + \frac{\Delta t}{6}(\mathbf{k}_1 + 2\mathbf{k}_2 + 2\mathbf{k}_3 + \mathbf{k}_4)
+	\end{align}
+	
+	RK4 is fourth-order accurate ($O(\Delta t^4)$) and provides good stability for moderate time steps.
+	
+	\section{Parameter Selection}
+	
+	Choosing appropriate parameters is crucial for desired behavior:
+	
+	\begin{itemize}
+		\item \textbf{Mass $m$}: Can be normalized to $m=1$ for simplicity
+		\item \textbf{Proportional gain $k_p$}: Higher values increase attraction strength but may cause oscillation. Typical range: $1$--$10$
+		\item \textbf{Damping $k_d$}: Should satisfy $k_d \geq 2\sqrt{mk_p}$ for critical/overdamping. Typical range: $2$--$5$
+		\item \textbf{Repulsion gain $k_{\text{rep}}$}: Should be strong enough to prevent collisions but not so strong as to disrupt formation. Typical range: $0.1$--$1$
+		\item \textbf{Safety radius $R_{\text{safe}}$}: Should be at least twice the drone's physical radius. Typical value: $0.5$--$2$ meters
+		\item \textbf{Maximum velocity $v_{\max}$}: Hardware-dependent, typically $1$--$10$ m/s
+	\end{itemize}
+
+	\begin{thebibliography}{9}
+		
+		\bibitem{repo}
+		\texttt{TwinkleSwarm} repository: \url{https://github.com/Stochastic-Batman/TwinkleSwarm}
+		
+		\bibitem{lucas1981}
+		B.D. Lucas and T. Kanade, "An iterative image registration technique with an application to stereo vision", \textit{Proceedings of the 7th International Joint Conference on Artificial Intelligence}, 1981.
+		
+		\bibitem{opencv}
+		OpenCV Documentation: \url{https://docs.opencv.org/4.x/}
+		
+		\bibitem{munkres}
+		J. Munkres, "Algorithms for the assignment and transportation problems", \textit{Journal of the Society for Industrial and Applied Mathematics}, vol. 5, no. 1, pp. 32--38, 1957.
+		
+		\bibitem{butcher}
+		J.C. Butcher, \textit{Numerical Methods for Ordinary Differential Equations}, John Wiley \& Sons, 2016.
+		
+	\end{thebibliography}
+	
+\end{document}

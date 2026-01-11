@@ -212,3 +212,7 @@ __marimo__/
 *.iml
 *.xml
 twinkleswarm_venv/
+TwinkleSwarm.aux
+TwinkleSwarm.log
+TwinkleSwarm.out
+TwinkleSwarm.synctex.gz
