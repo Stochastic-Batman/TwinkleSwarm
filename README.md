@@ -33,13 +33,17 @@ The project focuses on numerical simulation and trajectory generation, not real 
 │   └── videos/  # Input videos for motion tracking
 ├── src/
 │   ├── drone_dynamics.py  # Motion and control models
-│   ├── visualize.py  # 3D animation
-│   └── utils.py  # Utility functions
+│   ├── utils.py  # Utility functions
+│   ├── video_processing.py  # Optical flow extraction
+│   └── visualize.py  # 3D animation - by Claude Sonnet 4.5
 ├── outputs/
 │   ├── trajectories/  # Saved drone trajectories
 │   └── videos/  # Exported MP4 files
 ├── main.py
-├── requirements.txt
+├── examples.py  # by Claude Sonnet 4.5
+├── requirements.txt  # you might need to add ffmpeg to PATH on Windows  
+├── TwinkleSwarm.tex  # source code for documentation
+├── TwinkleSwarm.pdf  # documentation
 └── README.md
 ```
 
@@ -71,7 +75,7 @@ For dynamic scenes, motion is extracted from a video and converted into a veloci
 
 The simulation produces:
 
-1. Drone trajectories
+1. Drone trajectories (NumPy arrays saved as .npy files)
 2. A 3D animated visualization (displayed during runtime)
 3. A saved MP4 video of the animation
 
@@ -96,6 +100,10 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+Prepare your input data:
+* Place your handwritten name image in `data/images/`. Example: `data/images/handwritten_name.jpg`
+* Place your video in `data/videos/`. Example: `data/videos/wrecking_ball.mp4`
+
 and run the main entry point:
 
 ```bash
@@ -116,3 +124,26 @@ This will:
 * Motion tracking quality depends on video quality
 * Add a short **“Quick Demo”** section
 * Write a **configuration example** section
+
+## Troubleshooting
+Problem: Drones don't converge
+* Increase `k_d` (damping) or decrease `k_p` (attraction)
+* Increase `T_final` (simulation time)
+
+Problem: Drones collide
+* Increase `k_rep` (repulsion strength)
+* Increase `r_safe` (safety radius)
+Decrease num_drones or spread targets further
+
+Problem: Motion too slow
+* Increase `v_max` (maximum velocity)
+* Increase `k_p` (attraction) or `k_v` (velocity tracking)
+
+Problem: Oscillations around target
+* Increase `k_d` (damping)
+* Ensure `k_d >= 2 * sqrt(m * k_p)` for critical damping
+
+Problem: Video tracking doesn't work
+* Check video quality (needs clear motion, good contrast)
+* Adjust `video_scale` and `blur_sigma` in config
+* Try different optical flow parameters
