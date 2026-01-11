@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 
-np.random.seed(95)
+np.random.seed(95)  # ⚡
 
 
 def load_image(file_name: str) -> np.ndarray:

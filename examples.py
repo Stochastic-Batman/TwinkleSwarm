@@ -1,9 +1,34 @@
 import numpy as np
-from src.drone_dynamics import compute_trajectories_static, compute_trajectories_transition
+from src.drone_dynamics import compute_trajectories_static, compute_trajectories_transition, params
 from src.utils import get_text_targets, generate_initial_positions, save_trajectory
 from src.visualize import visualize_trajectories
 
-np.random.seed(95)
+
+np.random.seed(95)  # ⚡
+
+
+def example_0_2d_circle():
+    print("\n" + "=" * 60)
+    print("EXAMPLE 0: 2D Circle Formation")
+    print("=" * 60)
+    num_drones = 50
+    np.random.seed(95)
+    initial_positions = np.random.randn(num_drones, 3) * 5
+    initial_positions[:, 2] = 0.0
+    angles = np.linspace(0, 2 * np.pi, num_drones, endpoint=False)
+    radius = 10.0
+    targets_2d = np.zeros((num_drones, 2))
+    targets_2d[:, 0] = radius * np.cos(angles)
+    targets_2d[:, 1] = radius * np.sin(angles)
+    targets = np.hstack([targets_2d, np.zeros((num_drones, 1))])
+    print(f"Forming 2D circle pattern with radius {radius}")
+    original_k_rep = params['k_rep']
+    params['k_rep'] = 0.0
+    trajectories = compute_trajectories_static(initial_positions, targets, T_final=25.0, dt=0.1)
+    params['k_rep'] = original_k_rep
+    save_trajectory(trajectories, 'example0_2d_circle.npy')
+    visualize_trajectories(trajectories, 'example0_2d_circle.mp4', title='2D Circle Pattern', show=False)
+    print("Example completed")
 
 
 def example_simple_text():
@@ -108,6 +133,7 @@ def run_all_examples():
     print("\n" + "=" * 80)
     print("TWINKLESWARM EXAMPLES")
     print("=" * 80)
+    example_0_2d_circle()
     example_simple_text()
     example_multiple_transitions()
     example_circular_pattern()
