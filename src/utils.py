@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 
-np.random.seed(95)  # ⚡
+np.random.seed(95)
 
 
 def load_image(file_name: str) -> np.ndarray:
@@ -26,28 +26,47 @@ def load_video(file_name: str) -> cv2.VideoCapture:
 def get_target_points(image: np.ndarray, num_drones: int) -> np.ndarray:
     _, binary = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    all_points = np.vstack([c.squeeze() for c in contours if len(c) > 0])
+    if len(contours) == 0:
+        raise ValueError("No contours found in image")
+    all_points = []
+    for c in contours:
+        pts = c.squeeze()
+        if pts.ndim == 1:  # Handle single-point contours
+            pts = pts.reshape(1, -1)
+        if len(pts) > 0:
+            all_points.append(pts)
+    if len(all_points) == 0:
+        raise ValueError("No valid points found in image")
+    all_points = np.vstack(all_points)
     if len(all_points) < num_drones:
-        raise ValueError(f"Not enough points in image for {num_drones} drones, found only {len(all_points)}")
-    indices = np.linspace(0, len(all_points) - 1, num_drones, dtype=int)
+        indices = np.random.choice(len(all_points), num_drones, replace=True)
+    else:
+        indices = np.linspace(0, len(all_points) - 1, num_drones, dtype=int)
     targets_2d = all_points[indices]
     targets_3d = np.hstack([targets_2d, np.zeros((num_drones, 1))]).astype(float)
     targets_3d -= np.mean(targets_3d, axis=0)
-    targets_3d[:, 0] = (targets_3d[:, 0] / image.shape[1]) * 50
-    targets_3d[:, 1] = (targets_3d[:, 1] / image.shape[0]) * 50
+    max_extent = max(np.ptp(targets_3d[:, 0]), np.ptp(targets_3d[:, 1]))
+    if max_extent > 0:
+        scale_factor = 30.0 / max_extent
+        targets_3d[:, :2] *= scale_factor
     return targets_3d
 
 
 def get_text_targets(text: str, num_drones: int) -> np.ndarray:
-    height, width = 200, 800
+    height, width = 400, 1600
     image = np.zeros((height, width), dtype=np.uint8)
     font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(image, text, (50, 150), font, 5, 255, 10, cv2.LINE_AA)
+    font_scale = 6
+    thickness = 15
+    text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+    text_x = (width - text_size[0]) // 2
+    text_y = (height + text_size[1]) // 2
+    cv2.putText(image, text, (text_x, text_y), font, font_scale, 255, thickness, cv2.LINE_AA)
     return get_target_points(image, num_drones)
 
 
 def generate_initial_positions(num_drones: int, config: str = 'cube') -> np.ndarray:
-    np.random.seed(95)  # ⚡
+    np.random.seed(95)
     if config == 'line':
         positions = np.zeros((num_drones, 3))
         positions[:, 0] = np.linspace(-10, 10, num_drones)

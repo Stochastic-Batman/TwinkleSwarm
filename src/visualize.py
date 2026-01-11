@@ -6,7 +6,7 @@ import imageio
 from tqdm import tqdm
 
 
-np.random.seed(95)  # ⚡
+np.random.seed(95)
 
 
 def visualize_trajectories(trajectories: np.ndarray, output_file: str, title: str = "Drone Swarm", interval: int = 50, show: bool = True):
@@ -26,20 +26,23 @@ def visualize_trajectories(trajectories: np.ndarray, output_file: str, title: st
     ax.set_xlim(x_min - margin, x_max + margin)
     ax.set_ylim(y_min - margin, y_max + margin)
     ax.set_zlim(z_min - margin, z_max + margin)
-    ax.view_init(elev=20, azim=30)
+    ax.view_init(elev=30, azim=45)
     scat = ax.scatter([], [], [], c='yellow', marker='o', s=100, edgecolors='orange', linewidths=2.0)
-    lines = [ax.plot([], [], [], c='orange', alpha=0.3)[0] for _ in range(trajectories.shape[1])]
+    trail_length = 50
+    lines = [ax.plot([], [], [], c='orange', alpha=0.3, linewidth=1.0)[0] for _ in range(trajectories.shape[1])]
     def update(frame):
         positions = trajectories[frame]
         scat._offsets3d = (positions[:, 0], positions[:, 1], positions[:, 2])
+        start = max(0, frame - trail_length)
         for i, line in enumerate(lines):
-            line.set_data(trajectories[:frame+1, i, 0], trajectories[:frame+1, i, 1])
-            line.set_3d_properties(trajectories[:frame+1, i, 2])
+            trail = trajectories[start:frame + 1, i]
+            line.set_data(trail[:, 0], trail[:, 1])
+            line.set_3d_properties(trail[:, 2])
         ax.set_title(f"{title} - Frame {frame}/{len(trajectories) - 1}")
         return (scat,) + tuple(lines)
     anim = FuncAnimation(fig, update, frames=range(len(trajectories)), interval=interval, blit=False)
     print(f"Saving animation to {output_path}...")
-    anim.save(output_path, writer='ffmpeg', fps=5, dpi=150)
+    anim.save(output_path, writer='ffmpeg', fps=20, dpi=100)
     print(f"Animation saved to {output_path}")
     if show:
         plt.show()
@@ -64,9 +67,10 @@ def visualize_combined_trajectory(traj_list: list, labels: list, output_file: st
     ax.set_xlim(x_min - margin, x_max + margin)
     ax.set_ylim(y_min - margin, y_max + margin)
     ax.set_zlim(z_min - margin, z_max + margin)
-    ax.view_init(elev=20, azim=30)
+    ax.view_init(elev=30, azim=45)
     scat = ax.scatter([], [], [], c='yellow', marker='o', s=100, edgecolors='orange', linewidths=2.0)
-    lines = [ax.plot([], [], [], c='orange', alpha=0.3)[0] for _ in range(combined_traj.shape[1])]
+    trail_length = 50
+    lines = [ax.plot([], [], [], c='orange', alpha=0.3, linewidth=1.0)[0] for _ in range(combined_traj.shape[1])]
     segment_starts = [0]
     for t in traj_list:
         segment_starts.append(segment_starts[-1] + len(t))
@@ -77,14 +81,18 @@ def visualize_combined_trajectory(traj_list: list, labels: list, output_file: st
             if frame >= start and frame < segment_starts[i + 1]:
                 segment_idx = i
                 break
-        local_frame = frame - segment_starts[segment_idx]
-        positions = traj_list[segment_idx][local_frame]
+        positions = combined_traj[frame]
         scat._offsets3d = (positions[:, 0], positions[:, 1], positions[:, 2])
+        start = max(0, frame - trail_length)
+        for i, line in enumerate(lines):
+            trail = combined_traj[start:frame + 1, i]
+            line.set_data(trail[:, 0], trail[:, 1])
+            line.set_3d_properties(trail[:, 2])
         ax.set_title(f"{title} - {labels[segment_idx]} - Frame {frame}/{total_frames - 1}")
-        return scat,
+        return (scat,) + tuple(lines)
     anim = FuncAnimation(fig, update, frames=range(total_frames), interval=50, blit=False)
     print(f"Saving combined animation to {output_path}...")
-    anim.save(output_path, writer='ffmpeg', fps=5, dpi=150)
+    anim.save(output_path, writer='ffmpeg', fps=20, dpi=100)
     print(f"Combined animation saved to {output_path}")
     plt.close(fig)
 

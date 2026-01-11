@@ -3,7 +3,7 @@ from src.drone_dynamics import compute_trajectories_static, compute_trajectories
 from src.utils import get_text_targets, generate_initial_positions, save_trajectory
 from src.visualize import visualize_trajectories
 
-np.random.seed(95)  # ⚡
+np.random.seed(95)
 
 
 def example_simple_text():
@@ -15,7 +15,7 @@ def example_simple_text():
     initial_positions = generate_initial_positions(num_drones, config='square')
     targets = get_text_targets(text, num_drones)
     print(f"Forming text '{text}' with {num_drones} drones")
-    trajectories = compute_trajectories_static(initial_positions, targets, T_final=30.0, dt=0.05)
+    trajectories = compute_trajectories_static(initial_positions, targets, T_final=20.0, dt=0.1)
     save_trajectory(trajectories, 'example1_simple_text.npy')
     visualize_trajectories(trajectories, 'example1_simple_text.mp4', title=f'Text: {text}', show=False)
     print("Example completed")
@@ -34,13 +34,14 @@ def example_multiple_transitions():
     for i, word in enumerate(words):
         print(f"Transition {i+1}: '{word}'")
         targets = get_text_targets(word, num_drones)
-        trajectories = compute_trajectories_transition(current_positions, current_velocities, targets, T_final=30.0, dt=0.05)
+        trajectories = compute_trajectories_transition(current_positions, current_velocities, targets, T_final=15.0, dt=0.1)
         all_trajectories.append(trajectories)
         current_positions = trajectories[-1]
         if len(trajectories) > 1:
-            current_velocities = (trajectories[-1] - trajectories[-2]) / 0.05
+            current_velocities = (trajectories[-1] - trajectories[-2]) / 0.1
         else:
             current_velocities = np.zeros_like(current_positions)
+        print(f"  Completed: {len(trajectories)} frames")
     combined_trajectories = np.vstack(all_trajectories)
     save_trajectory(combined_trajectories, 'example2_multiple_transitions.npy')
     visualize_trajectories(combined_trajectories, 'example2_multiple_transitions.mp4', title='Multiple Transitions', show=False)
@@ -59,7 +60,7 @@ def example_circular_pattern():
     targets[:, 0] = radius * np.cos(angles)
     targets[:, 1] = radius * np.sin(angles)
     print(f"Forming circular pattern with radius {radius}")
-    trajectories = compute_trajectories_static(initial_positions, targets, T_final=30.0, dt=0.05)
+    trajectories = compute_trajectories_static(initial_positions, targets, T_final=20.0, dt=0.1)
     save_trajectory(trajectories, 'example3_circular.npy')
     visualize_trajectories(trajectories, 'example3_circular.mp4', title='Circular Pattern', show=False)
     print("Example completed")
@@ -78,7 +79,7 @@ def example_spiral_pattern():
     targets[:, 1] = radius * np.sin(t_vals)
     targets[:, 2] = t_vals * 0.5
     print(f"Forming 3D spiral pattern")
-    trajectories = compute_trajectories_static(initial_positions, targets, T_final=30.0, dt=0.05)
+    trajectories = compute_trajectories_static(initial_positions, targets, T_final=20.0, dt=0.1)
     save_trajectory(trajectories, 'example4_spiral.npy')
     visualize_trajectories(trajectories, 'example4_spiral.mp4', title='3D Spiral', show=False)
     print("Example completed")
@@ -97,7 +98,7 @@ def example_wave_pattern():
     targets[:, 0] = x_positions
     targets[:, 1] = amplitude * np.sin(frequency * x_positions)
     print(f"Forming sine wave pattern")
-    trajectories = compute_trajectories_static(initial_positions, targets, T_final=30.0, dt=0.05)
+    trajectories = compute_trajectories_static(initial_positions, targets, T_final=20.0, dt=0.1)
     save_trajectory(trajectories, 'example5_wave.npy')
     visualize_trajectories(trajectories, 'example5_wave.mp4', title='Wave Pattern', show=False)
     print("Example completed")
