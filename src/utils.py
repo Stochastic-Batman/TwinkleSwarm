@@ -1,5 +1,5 @@
-import os
 import cv2
+import os
 import numpy as np
 
 
@@ -23,27 +23,24 @@ def load_video(file_name: str) -> cv2.VideoCapture:
     return cap
 
 
-def get_target_points(image: np.ndarray, num_drones: int) -> np.ndarray:
-    _, binary = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if len(contours) == 0:
-        raise ValueError("No contours found in image")
-    all_points = []
-    for c in contours:
-        pts = c.squeeze()
-        if pts.ndim == 1:  # Handle single-point contours
-            pts = pts.reshape(1, -1)
-        if len(pts) > 0:
-            all_points.append(pts)
-    if len(all_points) == 0:
+def get_target_points(image: np.ndarray, num_drones: int, invert: bool = False) -> np.ndarray:
+    thresh_type = cv2.THRESH_OTSU | (cv2.THRESH_BINARY_INV if invert else cv2.THRESH_BINARY)
+    _, binary = cv2.threshold(image, 0, 255, thresh_type)
+    area = np.sum(binary == 255) / binary.size
+    if area > 0.5:
+        binary = 255 - binary
+    points = np.argwhere(binary == 255)
+    points = points[:, [1, 0]]
+    if len(points) == 0:
         raise ValueError("No valid points found in image")
-    all_points = np.vstack(all_points)
-    if len(all_points) < num_drones:
-        indices = np.random.choice(len(all_points), num_drones, replace=True)
-    else:
-        indices = np.linspace(0, len(all_points) - 1, num_drones, dtype=int)
-    targets_2d = all_points[indices]
-    targets_3d = np.hstack([targets_2d, np.zeros((num_drones, 1))]).astype(float)
+    replace = len(points) < num_drones
+    indices = np.random.choice(len(points), num_drones, replace=replace)
+    targets_2d = points[indices]
+    height, width = image.shape
+    targets_2d_centered = targets_2d - np.array([width / 2, height / 2])
+    targets_3d = np.zeros((num_drones, 3))
+    targets_3d[:, 0] = targets_2d_centered[:, 0]
+    targets_3d[:, 1] = -targets_2d_centered[:, 1]
     targets_3d -= np.mean(targets_3d, axis=0)
     max_extent = max(np.ptp(targets_3d[:, 0]), np.ptp(targets_3d[:, 1]))
     if max_extent > 0:
@@ -62,7 +59,7 @@ def get_text_targets(text: str, num_drones: int) -> np.ndarray:
     text_x = (width - text_size[0]) // 2
     text_y = (height + text_size[1]) // 2
     cv2.putText(image, text, (text_x, text_y), font, font_scale, 255, thickness, cv2.LINE_AA)
-    return get_target_points(image, num_drones)
+    return get_target_points(image, num_drones, invert=False)
 
 
 def generate_initial_positions(num_drones: int, config: str = 'cube') -> np.ndarray:
@@ -93,13 +90,11 @@ def generate_initial_positions(num_drones: int, config: str = 'cube') -> np.ndar
         raise ValueError(f"Unknown configuration: {config}")
     return positions.astype(float)
 
-
 def save_trajectory(trajectory: np.ndarray, filename: str):
     os.makedirs('outputs/trajectories', exist_ok=True)
     path = os.path.join('outputs/trajectories', filename)
     np.save(path, trajectory)
     print(f"Trajectory saved to {path}")
-
 
 def load_trajectory(filename: str) -> np.ndarray:
     path = os.path.join('outputs/trajectories', filename)

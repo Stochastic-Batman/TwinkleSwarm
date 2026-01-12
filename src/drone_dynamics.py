@@ -4,12 +4,13 @@ import time
 
 from scipy.integrate import solve_ivp
 from scipy.optimize import linear_sum_assignment
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 from numba import njit
 from tqdm import tqdm
 
-np.random.seed(95)
-params = {'m': 1.0, 'k_p': 5.0, 'k_v': 2.0, 'k_d': 6.0, 'v_max': 10.0, 'k_rep': 1.0, 'r_safe': 2.5}
+
+np.random.seed(95)  # ⚡
+params = {'m': 1.0, 'k_p': 5.0, 'k_v': 2.0, 'k_d': 6.0, 'v_max': 10.0, 'k_rep': 1.0, 'r_safe': 0.2}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def repulsion_force_spatial(positions: np.ndarray, k_rep: float, r_safe: float) 
     if N == 0:
         return np.zeros_like(positions)
 
-    tree = cKDTree(positions)
+    tree = KDTree(positions)
     pairs = tree.query_pairs(r=r_safe, output_type='ndarray')
 
     if len(pairs) == 0:
@@ -121,23 +122,19 @@ def rhs_target_tracking(t: float, y: np.ndarray, targets: np.ndarray, params: di
 
 
 def rhs_velocity_field(t: float, y: np.ndarray, velocity_field_func, params: dict) -> np.ndarray:
-    N = int(len(y) // 6)
-    positions = y[:3 * N].reshape(N, 3)
-    velocities = y[3 * N:].reshape(N, 3)
-
-    velocities_clipped = clip_velocity(velocities, params['v_max'])
-    dxdt = velocities_clipped
-
-    rep_forces = repulsion_force_hybrid(positions, params['k_rep'], params['r_safe'])
-
-    v_fields = np.array([velocity_field_func(positions[i], t) for i in range(N)])
-    v_fields_clipped = clip_velocity(v_fields, params['v_max'])
-
-    vel_track = params['k_v'] * (v_fields_clipped - velocities)
-    damp = -params['k_d'] * velocities
-    dvdt = (1 / params['m']) * (vel_track + rep_forces + damp)
-
-    return np.concatenate([dxdt.ravel(), dvdt.ravel()])
+    N = len(y) // 6
+    dim = 3
+    positions = y[:dim * N].reshape(N, dim)
+    velocities = y[dim * N:].reshape(N, dim)
+    v_field = np.zeros((N, dim))
+    for i in range(N):
+        v_field[i] = velocity_field_func(positions[i], t)
+    v_norms = np.linalg.norm(v_field, axis=1, keepdims=True)
+    v_sat = np.where(v_norms > 0, v_field * np.minimum(1.0, params['v_max'] / v_norms), 0.0)
+    v_sat = np.full_like(v_sat, np.mean(v_sat, axis=0))
+    repulsion = repulsion_force_hybrid(positions, params['k_rep'], params['r_safe'])
+    accelerations = (params['k_v'] * v_sat - params['k_d'] * velocities + repulsion) / params['m']
+    return np.concatenate([clip_velocity(velocities, params['v_max']).ravel(), accelerations.ravel()])
 
 
 def compute_trajectories_static(initial_positions: np.ndarray, targets: np.ndarray, T_final: float, dt: float) -> np.ndarray:
@@ -152,10 +149,9 @@ def compute_trajectories_static(initial_positions: np.ndarray, targets: np.ndarr
 
     global params
     y0 = np.concatenate([initial_positions.ravel(), np.zeros(dim * N)])
-    times = np.arange(0, T_final + dt, dt)
+    times = np.linspace(0, T_final, int(T_final / dt) + 1)
 
     logger.info(f"<<TwinkleSwarmLogger>>:  Solving ODE: {len(times)} timesteps, T_final={T_final}, dt={dt}")
-    logger.info(f"<<TwinkleSwarmLogger>>:  Using optimized repulsion (Numba + cKDTree hybrid)")
 
     start_time = time.time()
     last_print = [start_time]
@@ -198,7 +194,7 @@ def compute_trajectories_transition(initial_positions: np.ndarray, initial_veloc
 
     global params
     y0 = np.concatenate([initial_positions.ravel(), initial_velocities.ravel()])
-    times = np.arange(0, T_final + dt, dt)
+    times = np.linspace(0, T_final, int(T_final / dt) + 1)
 
     start_time = time.time()
     last_print = [start_time]
@@ -227,7 +223,7 @@ def compute_trajectories_dynamic(initial_positions: np.ndarray, initial_velociti
     N = len(initial_positions)
     global params
     y0 = np.concatenate([initial_positions.ravel(), initial_velocities.ravel()])
-    times = np.arange(0, T_final + dt, dt)
+    times = np.linspace(0, T_final, int(T_final / dt) + 1)
 
     sol = solve_ivp(lambda t, y: rhs_velocity_field(t, y, velocity_field_func, params), [0, T_final], y0, t_eval=times, method='RK45', rtol=5e-3, atol=1e-4)
 

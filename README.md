@@ -12,18 +12,6 @@ The swarm can:
 
 The project focuses on numerical simulation and trajectory generation, not real drone control.
 
-## Features
-
-* 3D drone swarm simulation
-* Static formation from handwritten images
-* Text-based formations
-* Smooth transition between shapes
-* Motion tracking from video input
-* Shape preservation during motion
-* Collision avoidance between drones
-* Velocity-limited motion
-* 3D visualization
-* MP4 video export
 
 ## Project Structure
 
@@ -35,33 +23,19 @@ The project focuses on numerical simulation and trajectory generation, not real 
 │   ├── drone_dynamics.py  # Motion and control models
 │   ├── utils.py  # Utility functions
 │   ├── video_processing.py  # Optical flow extraction
-│   └── visualize.py  # 3D animation - by Claude Sonnet 4.5
+│   ├── visualize.py  # 3D animation - by Claude Sonnet 4.5
+│   └── visualize_2d.py  # for view_2d.py - by Claude Sonnet 4.5
 ├── outputs/
 │   ├── trajectories/  # Saved drone trajectories
 │   └── videos/  # Exported MP4 files
 ├── main.py
-├── examples.py  # by Claude Sonnet 4.5
 ├── requirements.txt  # you might need to add ffmpeg to PATH on Windows  
 ├── TwinkleSwarm.tex  # source code for documentation
 ├── TwinkleSwarm.pdf  # documentation
+├── video_generation.py  # a small script to generate the video of a purple ball
+├── view_2d.py  # for those who prefer bird's-eye view
 └── README.md
 ```
-
-## Simulation Model (High-Level)
-
-Each drone is described by:
-
-* A 3D position
-* A 3D velocity
-
-The swarm evolves over time using:
-
-* Velocity tracking toward targets or a velocity field
-* Repulsion to avoid collisions
-* Damping for smooth convergence
-* A maximum velocity limit
-
-For dynamic scenes, motion is extracted from a video and converted into a velocity field that drives the swarm.
 
 ## Supported Inputs
 
@@ -116,14 +90,14 @@ This will:
 * Display a 3D animation
 * Save the animation as an MP4 file
 
-## Limitations
+Optionally, one can run
 
-* Simulation only, no real drone control
-* Performance depends on the number of drones
-* Dense formations may require tuning
-* Motion tracking quality depends on video quality
-* Add a short **“Quick Demo”** section
-* Write a **configuration example** section
+```bash
+python view_2d.py
+```
+
+to get a bird's-eye view of the generated videos.
+
 
 ## Troubleshooting
 Problem: Drones don't converge

@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
+
 np.random.seed(95)  # ⚡
 
 
@@ -18,7 +19,6 @@ class OpticalFlowProcessor:
         self.blur_sigma = blur_sigma
         self.flows = []
         self.prev_gray = None
-
 
     def compute_optical_flow(self):
         frame_idx = 0
@@ -38,7 +38,6 @@ class OpticalFlowProcessor:
         self.cap.release()
         return np.array(self.flows)
 
-
     def get_velocity_field_function(self, flows: np.ndarray):
         def velocity_field(position: np.ndarray, time: float) -> np.ndarray:
             frame_idx = int(time * self.fps)
@@ -57,16 +56,13 @@ class OpticalFlowProcessor:
             v10 = flow[y0, x1]
             v01 = flow[y1, x0]
             v11 = flow[y1, x1]
-            v_interp = (1 - alpha) * (1 - beta) * v00 + alpha * (1 - beta) * v10 + (
-                        1 - alpha) * beta * v01 + alpha * beta * v11
+            v_interp = (1 - alpha) * (1 - beta) * v00 + alpha * (1 - beta) * v10 + (1 - alpha) * beta * v01 + alpha * beta * v11
             v_physical = np.array([v_interp[0] * self.scale * self.fps, -v_interp[1] * self.scale * self.fps, 0.0])
             return v_physical
-
         return velocity_field
 
-
 def extract_shape_from_video(video_path: str, num_drones: int, frame_index: int = 0) -> np.ndarray:
-    np.random.seed(95)  # ⚡
+    np.random.seed(95)
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise ValueError(f"Cannot open video: {video_path}")
@@ -76,17 +72,17 @@ def extract_shape_from_video(video_path: str, num_drones: int, frame_index: int 
     if not ret:
         raise ValueError(f"Cannot read frame {frame_index}")
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    _, binary = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if len(contours) == 0:
-        raise ValueError("No contours found in video frame")
-    largest_contour = max(contours, key=cv2.contourArea)
-    all_points = largest_contour.squeeze()
-    if len(all_points) < num_drones:
-        indices = np.random.choice(len(all_points), num_drones, replace=True)
-    else:
-        indices = np.linspace(0, len(all_points) - 1, num_drones, dtype=int)
-    targets_2d = all_points[indices]
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    area = np.sum(binary == 255) / binary.size
+    if area > 0.5:
+        binary = 255 - binary
+    points = np.argwhere(binary == 255)
+    points = points[:, [1, 0]]
+    if len(points) == 0:
+        raise ValueError("No points found in video frame")
+    replace = len(points) < num_drones
+    indices = np.random.choice(len(points), num_drones, replace=replace)
+    targets_2d = points[indices]
     height, width = gray.shape
     scale = 0.01
     targets_2d_centered = targets_2d - np.array([width / 2, height / 2])
