@@ -5,6 +5,8 @@
 \usepackage{geometry}
 \usepackage{hyperref}
 \usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 
 \geometry{margin=1in}
 
@@ -414,6 +416,77 @@
 	
 	In practice, we only compute flow at pixels where $A^T A$ is well-conditioned, typically by checking that its smallest eigenvalue exceeds a threshold.
 	
+	\subsection{Farneback Method}
+	
+	The Farneback method is a dense optical flow algorithm that approximates the neighborhood of each pixel with polynomial expansions. Unlike Lucas-Kanade which assumes constant flow in a local neighborhood, Farneback models the image intensity as a second-order polynomial and estimates displacement by comparing polynomial coefficients between frames.
+	
+	\subsubsection{Polynomial Expansion Model}
+	
+	The fundamental idea is to represent the image intensity $I(\mathbf{x})$ in a neighborhood around each point using a quadratic polynomial:
+	
+	\begin{equation}
+		I(\mathbf{x}) \approx \mathbf{x}^T \mathbf{A} \mathbf{x} + \mathbf{b}^T \mathbf{x} + c
+		\label{eq:polynomial_expansion}
+	\end{equation}
+	
+	where $\mathbf{A}$ is a symmetric $2 \times 2$ matrix, $\mathbf{b}$ is a $2 \times 1$ vector, and $c$ is a scalar constant. This expansion is computed using a weighted least-squares fit over the neighborhood, typically with a Gaussian weighting function.
+	
+	\subsubsection{Displacement Estimation}
+	
+	Consider two consecutive frames $I_1$ and $I_2$. Under the assumption of brightness constancy and small displacement $\mathbf{d} = (u, v)^T$, we have:
+	
+	\begin{equation}
+		I_2(\mathbf{x}) = I_1(\mathbf{x} - \mathbf{d})
+		\label{eq:brightness_constancy_farneback}
+	\end{equation}
+	
+	If we expand $I_1$ around $\mathbf{x}$ using the polynomial model:
+	\begin{align}
+		I_1(\mathbf{x} - \mathbf{d}) &\approx (\mathbf{x} - \mathbf{d})^T \mathbf{A}_1 (\mathbf{x} - \mathbf{d}) + \mathbf{b}_1^T (\mathbf{x} - \mathbf{d}) + c_1 \\
+		&= \mathbf{x}^T \mathbf{A}_1 \mathbf{x} + (\mathbf{b}_1 - 2\mathbf{A}_1\mathbf{d})^T \mathbf{x} + (c_1 - \mathbf{b}_1^T\mathbf{d} + \mathbf{d}^T\mathbf{A}_1\mathbf{d})
+	\end{align}
+	
+	Comparing this with the polynomial expansion of $I_2$ at point $\mathbf{x}$:
+	\begin{equation}
+		I_2(\mathbf{x}) = \mathbf{x}^T \mathbf{A}_2 \mathbf{x} + \mathbf{b}_2^T \mathbf{x} + c_2
+	\end{equation}
+	
+	Equating coefficients gives the system:
+	\begin{align}
+		\mathbf{A}_2 &= \mathbf{A}_1 \\
+		\mathbf{b}_2 &= \mathbf{b}_1 - 2\mathbf{A}_1\mathbf{d} \\
+		c_2 &= c_1 - \mathbf{b}_1^T\mathbf{d} + \mathbf{d}^T\mathbf{A}_1\mathbf{d}
+	\end{align}
+	
+	From the second equation, we can solve for the displacement:
+	\begin{equation}
+		\mathbf{d} = -\frac{1}{2}\mathbf{A}_1^{-1}(\mathbf{b}_2 - \mathbf{b}_1)
+		\label{eq:farneback_displacement}
+	\end{equation}
+	
+	provided $\mathbf{A}_1$ is invertible (i.e., the neighborhood has sufficient texture).
+	
+	\subsubsection{Practical Implementation}
+	
+	In practice, the Farneback algorithm as implemented in OpenCV's \texttt{cv2.calcOpticalFlowFarneback()}.
+
+	
+	\textbf{Advantages over Lucas-Kanade}:
+	\begin{itemize}
+		\item Produces dense flow fields (flow at every pixel)
+		\item More robust to larger displacements
+		\item Better handling of textureless regions through global constraints
+	\end{itemize}
+	
+	\textbf{Disadvantages}:
+	\begin{itemize}
+		\item Computationally more expensive than sparse methods
+		\item Requires careful parameter tuning
+		\item May oversmooth small motions
+	\end{itemize}
+	
+	For \texttt{TwinkleSwarm}, we use the Farneback method as implemented in OpenCV because it provides dense flow fields that are essential for tracking entire shapes in video frames.
+	
 	\subsection{Computing Spatial and Temporal Derivatives}
 	
 	To apply the Lucas-Kanade method, we need to compute $I_x$, $I_y$, and $I_t$ numerically from discrete images.
@@ -551,37 +624,188 @@
 	While we focus on Lucas-Kanade, other optical flow methods include:
 	\begin{itemize}
 		\item \textbf{Horn-Schunck}: Adds a global smoothness constraint, encouraging similar flow in neighboring pixels
-		\item \textbf{Farneback}: Uses polynomial expansion instead of brightness constancy
 		\item \textbf{Deep learning methods} (FlowNet, PWC-Net): Neural networks trained on large datasets
 	\end{itemize}
 	
 	OpenCV provides implementations of these methods through \texttt{cv2.calcOpticalFlowFarneback()} and related functions.
 	
-	\section{Numerical Integration}
+	\section{Assignment Algorithms and Spatial Data Structures}
 	
-	Numerical integration techniques used for this project are probably the most famous and classical methods:
+	\subsection{Hungarian (Munkres) Algorithm}
 	
-	\subsection{Forward Euler Method}
+	The Hungarian algorithm, also known as the Munkres assignment algorithm, solves the assignment problem in polynomial time. Given $N$ drones and $N$ target positions, we need to assign each drone to a unique target to minimize the total squared distance traveled.
 	
+	\subsubsection{Problem Formulation}
+	
+	Let $C \in \mathbb{R}^{N \times N}$ be a cost matrix where $C_{ij}$ represents the cost of assigning drone $i$ to target $j$. In our case:
 	\begin{equation}
-		\mathbf{y}(t + \Delta t) = \mathbf{y}(t) + \Delta t \cdot \mathbf{f}(\mathbf{y}(t), t)
+		C_{ij} = \|\mathbf{x}_i(0) - \mathbf{T}_j\|^2
 	\end{equation}
 	
-	This is first-order accurate ($O(\Delta t)$) and simple but can be unstable for stiff systems.
+	where $\mathbf{x}_i(0)$ is the initial position of drone $i$ and $\mathbf{T}_j$ is the position of target $j$.
 	
-	\subsection{Runge-Kutta Methods}
+	We seek a permutation $\pi: \{1,\ldots,N\} \to \{1,\ldots,N\}$ that minimizes:
+	\begin{equation}
+		\sum_{i=1}^N C_{i,\pi(i)}
+	\end{equation}
 	
-	The fourth-order Runge-Kutta (RK4) method provides better accuracy:
+	\subsubsection{Algorithm Steps}
+	
+	The Hungarian algorithm operates on the cost matrix through a series of row and column operations:
+	
+	\begin{enumerate}
+		\item \textbf{Row reduction}: For each row $i$, subtract the minimum element from all elements in that row:
+		\begin{equation}
+			C_{ij} \leftarrow C_{ij} - \min_k C_{ik} \quad \forall j
+		\end{equation}
+		
+		\item \textbf{Column reduction}: For each column $j$, subtract the minimum element from all elements in that column:
+		\begin{equation}
+			C_{ij} \leftarrow C_{ij} - \min_k C_{kj} \quad \forall i
+		\end{equation}
+		
+		\item \textbf{Cover zeros with minimum lines}: Find the minimum number of horizontal and vertical lines needed to cover all zeros in the matrix. If $N$ lines are needed (where $N$ is the matrix size), an optimal assignment exists among the zeros. Otherwise, proceed to step 4.
+		
+		\item \textbf{Create additional zeros}: Let $\delta$ be the smallest uncovered element. Subtract $\delta$ from all uncovered elements and add $\delta$ to all elements covered twice. Return to step 3.
+	\end{enumerate}
+	
+	\subsubsection{Complexity and Implementation}
+	
+	The Hungarian algorithm has time complexity $O(N^3)$, which is efficient for moderate swarm sizes (up to several hundred drones). We use the implementation from SciPy's \texttt{linear\_sum\_assignment} function, which is based on the Jonker-Volgenant algorithm, a more efficient variant of the Hungarian algorithm.
+	
+	\textbf{Intuition}: The algorithm systematically reduces the cost matrix while maintaining the property that the optimal assignment remains unchanged. The row and column operations preserve the relative ordering of assignment costs, allowing us to find zero-cost assignments that correspond to optimal matchings.
+	
+	\subsection{K-d Trees for Spatial Queries}
+	
+	A $k$-d tree (short for $k$-dimensional tree) is a space-partitioning data structure for organizing points in $k$-dimensional space. For drone swarms in 3D space ($k=3$), $k$-d trees enable efficient neighbor searches essential for computing repulsive forces.
+	
+	\subsubsection{Data Structure}
+	
+	A $k$-d tree is a binary tree where each node represents a point in $\mathbb{R}^k$. Each non-leaf node splits the space along one of the coordinate axes using a hyperplane perpendicular to that axis. The tree is constructed recursively:
+	
+	\begin{enumerate}
+		\item Choose the dimension with the greatest spread of points
+		\item Select the median point along that dimension
+		\item Create a node with this point
+		\item Recursively build left subtree with points having coordinate less than median
+		\item Recursively build right subtree with points having coordinate greater than median
+	\end{enumerate}
+	
+	\subsubsection{Range Search Algorithm}
+	
+	To find all points within distance $R_{\text{safe}}$ of a query point $\mathbf{q}$, we perform a recursive search. The algorithm can be described as follows:
+	
+	\begin{algorithm}[H]
+		\caption{K-d Tree Range Search}
+		\begin{algorithmic}[1]
+			\Procedure{RangeSearch}{node, $\mathbf{q}$, $R_{\text{safe}}$}
+			\If{node is null}
+			\State \Return
+			\EndIf
+			
+			\State $d \gets \|\text{node.point} - \mathbf{q}\|$
+			\If{$d < R_{\text{safe}}$}
+			\State Add node.point to results
+			\EndIf
+			
+			\State $\text{split\_dim} \gets \text{node.split\_dimension}$
+			\State $\text{split\_val} \gets \text{node.point}[\text{split\_dim}]$
+			\State $\text{q\_val} \gets \mathbf{q}[\text{split\_dim}]$
+			
+			\If{$\text{q\_val} - R_{\text{safe}} < \text{split\_val}$}
+			\State \Call{RangeSearch}{node.left, $\mathbf{q}$, $R_{\text{safe}}$}
+			\EndIf
+			
+			\If{$\text{q\_val} + R_{\text{safe}} > \text{split\_val}$}
+			\State \Call{RangeSearch}{node.right, $\mathbf{q}$, $R_{\text{safe}}$}
+			\EndIf
+			\EndProcedure
+		\end{algorithmic}
+	\end{algorithm}
+	
+	\subsubsection{Complexity Analysis}
+	
+	\begin{itemize}
+		\item \textbf{Construction}: $O(N \log N)$ on average, $O(N^2)$ worst-case for poorly distributed points
+		\item \textbf{Query}: $O(\log N)$ for nearest neighbor, $O(N^{1-1/k} + m)$ for range queries returning $m$ points
+		\item \textbf{Memory}: $O(N)$ to store the tree structure
+	\end{itemize}
+	
+	\subsubsection{Application to Drone Repulsion}
+	
+	For $N$ drones, naive pairwise distance checking would require $O(N^2)$ operations. Using $k$-d trees with range search reduces this to approximately $O(N \log N)$ for well-distributed drones. In \texttt{TwinkleSwarm}, we use SciPy's \texttt{KDTree} implementation which provides efficient methods like \texttt{query\_pairs} to find all pairs within a specified distance.
+	
+	\textbf{Hybrid Approach}: For small swarms ($N < 50$), we use brute-force (but using \texttt{numba}'s JIT) pairwise checking which has lower constant overhead. For larger swarms, we switch to $k$-d tree based neighbor search. This hybrid approach optimizes performance across different swarm sizes.
+	
+	\section{Numerical Integration}
+	
+	\subsection{Runge-Kutta Method (RK45)}
+	
+	For the numerical integration of the drone dynamics equations, we employ the Runge-Kutta method of order 5(4), commonly referred to as RK45 or the Dormand-Prince method. This method provides an adaptive step-size control mechanism that balances accuracy and computational efficiency.
+	
+	\subsubsection{General Runge-Kutta Formulation}
+	
+	A general $s$-stage Runge-Kutta method for solving the initial value problem $\dot{\mathbf{y}} = \mathbf{f}(t, \mathbf{y})$, $\mathbf{y}(t_0) = \mathbf{y}_0$ is given by:
 	
 	\begin{align}
-		\mathbf{k}_1 &= \mathbf{f}(\mathbf{y}_n, t_n) \\
-		\mathbf{k}_2 &= \mathbf{f}(\mathbf{y}_n + \frac{\Delta t}{2}\mathbf{k}_1, t_n + \frac{\Delta t}{2}) \\
-		\mathbf{k}_3 &= \mathbf{f}(\mathbf{y}_n + \frac{\Delta t}{2}\mathbf{k}_2, t_n + \frac{\Delta t}{2}) \\
-		\mathbf{k}_4 &= \mathbf{f}(\mathbf{y}_n + \Delta t \mathbf{k}_3, t_n + \Delta t) \\
-		\mathbf{y}_{n+1} &= \mathbf{y}_n + \frac{\Delta t}{6}(\mathbf{k}_1 + 2\mathbf{k}_2 + 2\mathbf{k}_3 + \mathbf{k}_4)
+		\mathbf{k}_i &= \mathbf{f}\left(t_n + c_i \Delta t, \mathbf{y}_n + \Delta t \sum_{j=1}^{s} a_{ij} \mathbf{k}_j\right), \quad i = 1, \ldots, s \\
+		\mathbf{y}_{n+1} &= \mathbf{y}_n + \Delta t \sum_{i=1}^{s} b_i \mathbf{k}_i
 	\end{align}
 	
-	RK4 is fourth-order accurate ($O(\Delta t^4)$) and provides good stability for moderate time steps.
+	where $c_i$, $a_{ij}$, and $b_i$ are method-specific coefficients typically organized in a Butcher tableau.
+	
+	\subsubsection{RK45 (Dormand-Prince) Coefficients}
+	
+	The RK45 method uses 7 stages to produce both a 5th-order accurate solution $\mathbf{y}_{n+1}$ and a 4th-order accurate solution $\hat{\mathbf{y}}_{n+1}$, which are used for error estimation and step-size control. The Butcher tableau for RK45 is:
+	
+	\[
+	\begin{array}{c|ccccccc}
+		0 & \\
+		\frac{1}{5} & \frac{1}{5} & \\
+		\frac{3}{10} & \frac{3}{40} & \frac{9}{40} & \\
+		\frac{4}{5} & \frac{44}{45} & -\frac{56}{15} & \frac{32}{9} & \\
+		\frac{8}{9} & \frac{19372}{6561} & -\frac{25360}{2187} & \frac{64448}{6561} & -\frac{212}{729} & \\
+		1 & \frac{9017}{3168} & -\frac{355}{33} & \frac{46732}{5247} & \frac{49}{176} & -\frac{5103}{18656} & \\
+		1 & \frac{35}{384} & 0 & \frac{500}{1113} & \frac{125}{192} & -\frac{2187}{6784} & \frac{11}{84} \\ \hline
+		& \frac{35}{384} & 0 & \frac{500}{1113} & \frac{125}{192} & -\frac{2187}{6784} & \frac{11}{84} & 0 \\
+		& \frac{5179}{57600} & 0 & \frac{7571}{16695} & \frac{393}{640} & -\frac{92097}{339200} & \frac{187}{2100} & \frac{1}{40}
+	\end{array}
+	\]
+	
+	The bottom row with $b_i$ coefficients gives the 5th-order solution, while the $\hat{b}_i$ coefficients (second bottom row) give the 4th-order solution used for error estimation.
+	
+	\subsubsection{Step-size Control}
+	
+	The local error estimate is computed as:
+	\begin{equation}
+		\mathbf{e}_{n+1} = \|\mathbf{y}_{n+1} - \hat{\mathbf{y}}_{n+1}\|
+	\end{equation}
+	
+	Given a desired tolerance $\tau$, the optimal step size for the next step is determined by:
+	\begin{equation}
+		\Delta t_{\text{new}} = \Delta t_{\text{old}} \cdot \min\left(f_{\text{max}}, \max\left(f_{\text{min}}, \beta \cdot \left(\frac{\tau}{\mathbf{e}_{n+1}}\right)^{1/5}\right)\right)
+	\end{equation}
+	
+	where $\beta \approx 0.9$ is a safety factor, and $f_{\text{min}}$, $f_{\text{max}}$ limit the step size change (typically $f_{\text{min}} = 0.1$, $f_{\text{max}} = 5.0$).
+	
+	\subsubsection{Implementation in \texttt{TwinkleSwarm}}
+	
+	In our implementation, we use SciPy's \texttt{solve\_ivp} function with the \texttt{RK45} method, specifying relative and absolute tolerances:
+	\begin{equation}
+		\texttt{rtol} = 5 \times 10^{-3}, \quad \texttt{atol} = 1 \times 10^{-4}
+	\end{equation}
+	
+	These tolerances provide a good balance between accuracy and computational efficiency for our drone dynamics. The adaptive step-size control ensures that we take larger steps when the system evolves smoothly and smaller steps during rapid transients (e.g., when drones are close to each other and repulsive forces are strong).
+	
+	\subsubsection{Advantages for Drone Simulation}
+	
+	The RK45 method is particularly well-suited for drone swarm simulation because:
+	\begin{itemize}
+		\item \textbf{Adaptive step size}: Automatically adjusts to the local dynamics, ensuring stability during close interactions while maintaining efficiency during steady flight
+		\item \textbf{High accuracy}: 5th-order local accuracy provides precise trajectory computation
+		\item \textbf{Error control}: Built-in error estimation allows for controlled trade-off between accuracy and speed
+		\item \textbf{Widely used}: Well-tested implementation in SciPy with excellent numerical properties
+	\end{itemize}
 	
 	\section{Parameter Selection}
 	
@@ -595,7 +819,8 @@
 		\item \textbf{Safety radius $R_{\text{safe}}$}: Should be at least twice the drone's physical radius. Typical value: $0.5$--$2$ meters
 		\item \textbf{Maximum velocity $v_{\max}$}: Hardware-dependent, typically $1$--$10$ m/s
 	\end{itemize}
-
+	
+	\newpage
 	\begin{thebibliography}{9}
 		
 		\bibitem{repo}
@@ -604,14 +829,20 @@
 		\bibitem{lucas1981}
 		B.D. Lucas and T. Kanade, "An iterative image registration technique with an application to stereo vision", \textit{Proceedings of the 7th International Joint Conference on Artificial Intelligence}, 1981.
 		
+		\bibitem{farneback2003}
+		G. Farnebäck, "Two-Frame Motion Estimation Based on Polynomial Expansion", \textit{Proceedings of the 13th Scandinavian Conference on Image Analysis}, 2003.
+		
 		\bibitem{opencv}
 		OpenCV Documentation: \url{https://docs.opencv.org/4.x/}
 		
 		\bibitem{munkres}
 		J. Munkres, "Algorithms for the assignment and transportation problems", \textit{Journal of the Society for Industrial and Applied Mathematics}, vol. 5, no. 1, pp. 32--38, 1957.
 		
-		\bibitem{butcher}
-		J.C. Butcher, \textit{Numerical Methods for Ordinary Differential Equations}, John Wiley \& Sons, 2016.
+		\bibitem{kdtree}
+		J.L. Bentley, "Multidimensional Binary Search Trees Used for Associative Searching", \textit{Communications of the ACM}, vol. 18, issue 9, pp. 509--517, 1975.
+		
+		\bibitem{dormand1980}
+		J.R. Dormand and P.J. Prince, "A family of embedded Runge-Kutta formulae", \textit{Journal of Computational and Applied Mathematics}, vol. 6, no. 1, pp. 19--26, 1980.
 		
 	\end{thebibliography}
 	
