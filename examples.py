@@ -31,21 +31,6 @@ def example_0_2d_circle():
     print("Example completed")
 
 
-def example_simple_text():
-    print("\n" + "=" * 60)
-    print("EXAMPLE 1: Simple Text Formation")
-    print("=" * 60)
-    num_drones = 80
-    text = "HELLO"
-    initial_positions = generate_initial_positions(num_drones, config='square')
-    targets = get_text_targets(text, num_drones)
-    print(f"Forming text '{text}' with {num_drones} drones")
-    trajectories = compute_trajectories_static(initial_positions, targets, T_final=20.0, dt=0.1)
-    save_trajectory(trajectories, 'example1_simple_text.npy')
-    visualize_trajectories(trajectories, 'example1_simple_text.mp4', title=f'Text: {text}', show=False)
-    print("Example completed")
-
-
 def example_multiple_transitions():
     print("\n" + "=" * 60)
     print("EXAMPLE 2: Multiple Sequential Transitions")
@@ -134,7 +119,6 @@ def run_all_examples():
     print("TWINKLESWARM EXAMPLES")
     print("=" * 80)
     example_0_2d_circle()
-    example_simple_text()
     example_multiple_transitions()
     example_circular_pattern()
     example_spiral_pattern()
@@ -149,4 +133,4 @@ def run_all_examples():
 
 
 if __name__ == '__main__':
-    run_all_examples()
+    example_wave_pattern()
