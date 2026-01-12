@@ -1,6 +1,7 @@
 imageio  # Reading and writing image sequences and video frames
 imageio-ffmpeg  # MP4 video encoding backend for imageio
 matplotlib  # 3D visualization and animation of the drone swarm
+numba  # For speeding up computation
 numpy
 opencv-python  # Image and video processing, motion extraction
 scipy  # Numerical integration
